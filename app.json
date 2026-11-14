@@ -3,7 +3,7 @@
     "name": "Homebase",
     "slug": "homebase-household",
     "scheme": "homebase",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -42,8 +42,17 @@
         }
       ],
       "expo-status-bar",
+      [
+        "expo-navigation-bar",
+        {
+          "hidden": true,
+          "style": "light",
+          "enforceContrast": false
+        }
+      ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-sqlite"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

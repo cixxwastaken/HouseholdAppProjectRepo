@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { DashboardData, HouseholdRole, Membership, Profile, RecurrenceRule } from './types';
+import type { DashboardData, DashboardWidget, HouseholdRole, Membership, Profile, RecurrenceRule } from './types';
 const unwrap = <T = any>(result: any): T => { if (result.error) throw new Error(result.error.message); return result.data as T; };
 export const auth = { signIn: async (email: string, password: string) => unwrap(await supabase.auth.signInWithPassword({ email, password })), signUp: async (email: string, password: string) => unwrap(await supabase.auth.signUp({ email, password })), signOut: async () => unwrap(await supabase.auth.signOut()) };
 export async function getMembership(): Promise<Membership | null> { const { data: { user } } = await supabase.auth.getUser(); if (!user) return null; const row = unwrap(await supabase.from('memberships').select('household_id,role').eq('user_id', user.id).maybeSingle() as any) as any; if (!row) return null; const profile = unwrap(await supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle() as any) as { display_name: string | null } | null; return { household_id: row.household_id, role: row.role, display_name: profile?.display_name ?? null }; }
@@ -9,7 +9,42 @@ export async function getMembership(): Promise<Membership | null> { const { data
 export const createHousehold = async (name: string) => unwrap(await supabase.from('households').insert({ name }) as any);
 export const joinWithCode = async (code: string) => unwrap(await supabase.functions.invoke('enroll-household', { body: { code } }) as any);
 export const redeemInvite = async (inviteToken: string) => unwrap(await supabase.functions.invoke('enroll-household', { body: { inviteToken } }) as any);
-export async function getProfile(): Promise<Profile | null> { const { data: { user } } = await supabase.auth.getUser(); if (!user) return null; return unwrap(await supabase.from('profiles').select('id,display_name,bio,avatar_path,dashboard_widgets').eq('id', user.id).maybeSingle() as any) as Profile | null; }
+const DEFAULT_DASHBOARD_WIDGETS: DashboardWidget[] = ['chores', 'events', 'shopping'];
+
+export async function getProfile(): Promise<Profile | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const profile = await supabase
+    .from('profiles')
+    .select('id,display_name,bio,avatar_path,dashboard_widgets')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (!profile.error) return profile.data as Profile | null;
+
+  // Newer profile preferences are optional until their version-controlled
+  // migration is applied. Keep existing installations usable in the meantime.
+  const missingOptionalColumn =
+    ['bio', 'avatar_path', 'dashboard_widgets'].some((column) => profile.error?.message.includes(column)) &&
+    /column|schema cache|does not exist|could not find/i.test(profile.error.message);
+  if (!missingOptionalColumn) throw new Error(profile.error.message);
+
+  const legacy = await supabase
+    .from('profiles')
+    .select('id,display_name')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (legacy.error) throw new Error(legacy.error.message);
+  if (!legacy.data) return null;
+
+  return {
+    ...legacy.data,
+    bio: null,
+    avatar_path: null,
+    dashboard_widgets: [...DEFAULT_DASHBOARD_WIDGETS],
+  };
+}
 export async function saveProfile(input: Pick<Profile, 'display_name' | 'bio' | 'dashboard_widgets'>) { const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error('Sign in required'); return unwrap(await supabase.from('profiles').update(input).eq('id', user.id) as any); }
 export async function uploadProfileAvatar(uri: string) { const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error('Sign in required'); const response = await fetch(uri); const file = await response.blob(); const path = user.id + '/avatar-' + Date.now() + '.jpg'; unwrap(await supabase.storage.from('profile-avatars').upload(path, file, { contentType: 'image/jpeg', upsert: false }) as any); return unwrap(await supabase.from('profiles').update({ avatar_path: path }).eq('id', user.id) as any); }
 export const getHousehold = async (householdId: string) => unwrap(await supabase.from('households').select('id,name').eq('id', householdId).single() as any) as { id: string; name: string };

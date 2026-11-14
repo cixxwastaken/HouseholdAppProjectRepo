@@ -11,18 +11,52 @@ export default function HomeScreen() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [member, setMember] = useState<Membership | null>(null);
   const [widgets, setWidgets] = useState<DashboardWidget[]>(['chores', 'events', 'shopping']);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const current = await getMembership();
-    setMember(current);
-    const profile = await getProfile();
-    setWidgets(profile?.dashboard_widgets ?? ['chores', 'events', 'shopping']);
-    if (current) setData(await getDashboard(current.household_id));
+    setLoading(true);
+    setError(null);
+    try {
+      const current = await getMembership();
+      setMember(current);
+      if (!current) {
+        setData(null);
+        return;
+      }
+
+      const [profile, dashboard] = await Promise.all([
+        getProfile(),
+        getDashboard(current.household_id),
+      ]);
+      setWidgets(profile?.dashboard_widgets ?? ['chores', 'events', 'shopping']);
+      setData(dashboard);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load your household right now.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
   useFocusEffect(useCallback(() => {
     void load();
   }, [load]));
 
-  if (!data || !member) return <Screen eyebrow="Homebase" title="Today"><ActivityIndicator size="large" color="#1F6B59" /></Screen>;
+  if (loading) return <Screen eyebrow="Homebase" title="Today"><View style={s.loading}><ActivityIndicator size="large" color="#1F6B59" /><Text style={s.empty}>Loading your household…</Text></View></Screen>;
+
+  if (error) return <Screen eyebrow="Homebase" title="Today">
+    <Card title="Home could not load" accent="#D36B64">
+      <Text style={s.empty}>{error}</Text>
+      <AppButton title="Try again" onPress={() => void load()} />
+    </Card>
+  </Screen>;
+
+  if (!member) return <Screen eyebrow="Homebase" title="Today">
+    <Card title="Connect a household">
+      <Text style={s.empty}>Create a household or join one to see your shared day here.</Text>
+      <AppButton title="Open households" onPress={() => router.push('/household')} />
+    </Card>
+  </Screen>;
+
+  if (!data) return <Screen eyebrow="Homebase" title="Today"><ActivityIndicator size="large" color="#1F6B59" /></Screen>;
 
   const greeting = member.display_name ? 'Hello, ' + member.display_name.split(' ')[0] : 'Your day';
   return <Screen eyebrow={new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} title={greeting}>
@@ -49,6 +83,7 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
+  loading: { alignItems: 'center', gap: 12, paddingVertical: 24 },
   summary: { color: '#4C5E57', fontSize: 16, lineHeight: 24, marginTop: -6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(48,81,68,.12)', paddingTop: 11 },
   grow: { flex: 1 }, item: { color: '#21342D', fontSize: 16, fontWeight: '700' },

@@ -15,3 +15,8 @@ load over-the-air JavaScript updates.
 
 Users download each new APK from the Expo build page and install it as a normal
 Android upgrade. No cache clearing or second launch is required.
+
+The app checks the public `main/app.json` version when it launches. If that
+version is newer than the installed app, it offers a link to the Expo builds
+page. Network failures do not block app use; the page may show a build in
+progress until its APK is ready.
